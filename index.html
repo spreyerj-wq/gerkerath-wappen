@@ -154,6 +154,10 @@ h1 {
 #status { font-size: 14px; color: var(--muted); margin: 0; }
 #status.error { color: var(--warn); }
 #total { font-size: 14px; font-weight: 700; margin: 0; font-variant-numeric: tabular-nums; }
+.opt.is-picked { border-color: var(--accent); border-style: dashed; background: var(--accent-soft); }
+#confirm { appearance: none; font: inherit; font-weight: 700; font-size: 16px; width: 100%; margin-top: 18px; padding: 14px; border: 0; border-radius: 14px; background: var(--accent); color: #fff; cursor: pointer; }
+#confirm:disabled { opacity: .4; cursor: default; }
+#confirm[hidden] { display: none !important; }
 @keyframes rise {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
@@ -172,7 +176,7 @@ h1 {
   <header>
     <p class="eyebrow">Abstimmung · Gerkerath</p>
     <h1>Welches Wappen soll Gerkerath bekommen?</h1>
-    <p class="lead">Tippe auf dein Lieblingswappen. Du kannst deine Wahl jederzeit ändern.</p>
+    <p class="lead">Wähle dein Lieblingswappen aus und tippe dann auf „Stimme bestätigen“. Danach kann die Stimme nicht mehr geändert werden.</p>
   </header>
 
   <main class="grid" aria-label="Wappen zur Auswahl">
@@ -214,6 +218,8 @@ h1 {
     </button>
   </main>
 
+  <button id="confirm" type="button" disabled>Stimme bestätigen</button>
+
   <div class="foot">
     <p id="total">Ergebnisse werden geladen …</p>
     <p id="status" role="status" aria-live="polite"></p>
@@ -223,11 +229,13 @@ h1 {
 <script>
 (function () {
   var ENDPOINT = "https://script.google.com/macros/s/AKfycbz46-uRPnBwxuCxiEWzki6lhv2AHV1tcQNJ7RtBNQGaIh7Lpx9PHyUd2RjZZMTnPP_AEQ/exec";
-  var KEY = "gerkerath-wappen-vote-v2";
+  var KEY = "gerkerath-wappen-vote-v3";
   var cards = Array.prototype.slice.call(document.querySelectorAll('.opt'));
   var statusEl = document.getElementById('status');
   var totalEl = document.getElementById('total');
   var mine = null;
+  var picked = null;
+  var confirmBtn = document.getElementById('confirm');
   try { mine = Number(localStorage.getItem(KEY)) || null; } catch (e) {}
 
   function setStatus(msg, isError) { statusEl.textContent = msg; statusEl.className = isError ? 'error' : ''; }
@@ -239,6 +247,7 @@ h1 {
       card.querySelector('.count').textContent = counts[i] + (counts[i] === 1 ? ' Stimme' : ' Stimmen');
       card.classList.toggle('is-mine', mine === i + 1);
       card.disabled = !!mine;
+      card.classList.toggle('is-picked', !mine && picked === i + 1);
     });
     totalEl.textContent = total ? total + (total === 1 ? ' Stimme' : ' Stimmen') + ' insgesamt' : 'Noch keine Stimmen';
   }
@@ -252,25 +261,35 @@ h1 {
   }
 
   function updateStatus() {
-    setStatus(mine ? 'Danke, deine Stimme ist gezählt: Wappen ' + mine + '.' : 'Tippe auf ein Wappen, um abzustimmen.');
+    confirmBtn.hidden = !!mine;
+    confirmBtn.disabled = !picked;
+    cards.forEach(function (card, i) { card.classList.toggle('is-picked', !mine && picked === i + 1); });
+    setStatus(mine ? 'Danke, deine Stimme ist gezählt: Wappen ' + mine + '.' : picked ? 'Ausgewählt: Wappen ' + picked + '. Jetzt auf „Stimme bestätigen“ tippen.' : 'Wähle zuerst ein Wappen aus.');
   }
 
   cards.forEach(function (card) {
     card.addEventListener('click', function () {
       if (mine) return;
-      var n = Number(card.getAttribute('data-n'));
+      picked = Number(card.getAttribute('data-n'));
+      updateStatus();
+    });
+  });
+  confirmBtn.addEventListener('click', function () {
+      if (mine || !picked) return;
+      var n = picked;
       mine = n;
+      confirmBtn.disabled = true;
       try { localStorage.setItem(KEY, String(n)); } catch (e) {}
       updateStatus();
       setStatus('Speichere deine Stimme …');
       fetch(ENDPOINT + '?action=vote&choice=' + n).then(load).catch(function () {
         setStatus('Deine Stimme konnte nicht gespeichert werden. Lade die Seite neu und versuch es noch einmal.', true);
         mine = null;
+        confirmBtn.hidden = false; confirmBtn.disabled = !picked;
         try { localStorage.removeItem(KEY); } catch (e) {}
         paint([0, 0, 0, 0]);
         load();
       });
-    });
   });
 
   updateStatus();
